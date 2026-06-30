@@ -20,12 +20,12 @@ def init_db():
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            # Auto-build Users table if missing
+            # Auto-build Users table if missing (Using password_hash to match backend auth)
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
                 recovery_phrase TEXT NOT NULL
             );
             """)
@@ -116,7 +116,7 @@ def local_register_user(username, password, recovery_phrase):
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO users (username, password, recovery_phrase) VALUES (?, ?, ?);",
+                "INSERT INTO users (username, password_hash, recovery_phrase) VALUES (?, ?, ?);",
                 (username, hashed_password, recovery_phrase.strip().lower())
             )
             conn.commit()
@@ -135,7 +135,7 @@ def local_reset_password(username, recovery_phrase, new_password):
         cursor.execute(query_verify, (username, recovery_phrase.strip().lower()))
         user = cursor.fetchone()
         if user:
-            cursor.execute("UPDATE users SET password = ? WHERE id = ?;", (hashed_password, user[0]))
+            cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?;", (hashed_password, user[0]))
             conn.commit()
             return True
         return False
