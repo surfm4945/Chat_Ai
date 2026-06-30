@@ -1,0 +1,17 @@
+# Local environment variables
+.env
+
+# Python caching
+__pycache__/
+*.pyc
+
+# Streamlit local state
+.streamlit/secrets.toml
+
+# Databases
+*.db
+*.sqlite3
+
+# Virtual environments
+venv/
+.venv/

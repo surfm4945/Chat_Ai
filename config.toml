@@ -1,0 +1,11 @@
+[theme]
+primaryColor = "#2563EB" # Professional Blue
+backgroundColor = "#0F172A" # Dark Slate
+secondaryBackgroundColor = "#1E293B" # Lighter Slate for cards/sidebar
+textColor = "#F8FAFC" # Off-white text
+font = "sans serif"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = true
