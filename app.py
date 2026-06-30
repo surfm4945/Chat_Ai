@@ -10,10 +10,45 @@ from ai.gemini_client import correct_grammar, generate_smart_replies, translate_
 # Page Initialization
 st.set_page_config(page_title="Private AI Chat Network", page_icon="🔒", layout="wide")
 
+# Directory Setup (exist_ok=True prevents thread-reload collision crashes)
 UPLOAD_DIR = "uploads"
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# --- AUTO-DATABASE INITIALIZATION ENGINE ---
+def init_db():
+    """Ensures the core database schema exists seamlessly on fresh cloud instances."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Auto-build Users table if missing
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                recovery_phrase TEXT NOT NULL
+            );
+            """)
+            # Auto-build Messages table if missing
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                receiver_id INTEGER NOT NULL,
+                content TEXT,
+                file_path TEXT,
+                file_type TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            conn.commit()
+    except Exception as e:
+        st.error(f"Critical initialization error: {e}")
+
+# Execute database checks immediately on boot before auth hooks fire
+init_db()
+
+# State Management Initialization
 if "theme_mode" not in st.session_state:
     st.session_state.theme_mode = "Dark Mode"
 if "user" not in st.session_state:
@@ -187,13 +222,11 @@ def render_live_chat_stream(current_user, target_chat):
 if st.session_state.user is None:
     st.write("## ") 
     
-    # Perfectly centers a 500px-600px wide professional panel container on the screen
     _, layout_mid_canvas, _ = st.columns([1.5, 2, 1.5])
     
     with layout_mid_canvas:
         st.markdown('<div class="auth-container-card">', unsafe_allow_html=True)
         
-        # Centered clean branding header
         st.markdown("<h2 style='text-align: center; margin-bottom: 0;'>🏪 The Mart Network</h2>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 30px;'>Secure AI-Powered Communication Matrix</p>", unsafe_allow_html=True)
         
