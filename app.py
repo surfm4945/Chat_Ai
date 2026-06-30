@@ -282,19 +282,65 @@ if st.session_state.user is None:
                     
         with tab2:
             st.write("#### Register Identity Node")
+            
+            # Initialize unique state parameters for email tracking if not present
+            if "otp_verified_code" not in st.session_state:
+                st.session_state.otp_verified_code = None
+            if "otp_sent_success" not in st.session_state:
+                st.session_state.otp_sent_success = False
+
             reg_user = st.text_input("Choose Unique Username", key="reg_user_input", placeholder="e.g., sami11").strip()
             reg_pass = st.text_input("Assign Strong Password", type="password", key="reg_pass_input", placeholder="Min 6 characters")
+            reg_email = st.text_input("Gmail Address for Verification", placeholder="username@gmail.com", key="reg_email_input").strip()
             reg_hint = st.text_input("Secret Recovery Passphrase", type="password", placeholder="Used to restore account access if credentials lost", key="reg_hint_input")
             
-            if st.button("✨ Initialize Profile", use_container_width=True):
-                if len(reg_user) < 3 or len(reg_pass) < 6 or not reg_hint:
-                    st.warning("Ensure requirements met: User >=3, Pass >=6, and Secret Recovery Phrase filled.")
-                else:
-                    success, msg = local_register_user(reg_user, reg_pass, reg_hint)
-                    if success:
-                        st.success(msg + " Proceed to Sign In tab.")
+            # Step 1: Send OTP code to target email
+            if not st.session_state.otp_sent_success:
+                if st.button("📧 Send Verification Code", use_container_width=True):
+                    if len(reg_user) < 3 or len(reg_pass) < 6 or not reg_email or not reg_hint:
+                        st.warning("Ensure all fields meet configurations: User >=3, Pass >=6, and Email/Phrase filled.")
+                    elif "@gmail.com" not in reg_email.lower():
+                        st.error("Please supply a valid Gmail routing address.")
                     else:
-                        st.error(msg)
+                        with st.spinner("Dispatching secure credential tokens..."):
+                            # Call email sender function
+                            from utils.emailer import send_verification_otp
+                            success, result = send_verification_otp(reg_email)
+                            
+                            if success:
+                                st.session_state.otp_verified_code = result
+                                st.session_state.otp_sent_success = True
+                                st.success(f"Verification code successfully dispatched to {reg_email}!")
+                                st.rerun()
+                            else:
+                                st.error(f"Email delivery subsystem failed: {result}")
+            
+            # Step 2: Code input display pops up only after email successfully fires
+            else:
+                st.info(f"Verification code active. Check your email inbox: {reg_email}")
+                user_otp_attempt = st.text_input("Enter 6-Digit OTP Code Verification", max_chars=6, placeholder="######", key="user_otp_input_field").strip()
+                
+                col_back, col_confirm = st.columns([1, 1])
+                with col_back:
+                    if st.button("⬅️ Change Details", use_container_width=True):
+                        st.session_state.otp_sent_success = False
+                        st.session_state.otp_verified_code = None
+                        st.rerun()
+                        
+                with col_confirm:
+                    if st.button("✨ Verify & Create Profile", type="primary", use_container_width=True):
+                        if user_otp_attempt == st.session_state.otp_verified_code:
+                            # Proceed with the original baseline database insertion logic
+                            success, msg = local_register_user(reg_user, reg_pass, reg_hint)
+                            if success:
+                                st.success("Identity verified successfully! Account network configured. Proceed to Sign In.")
+                                # Flush temp parameters out
+                                st.session_state.otp_sent_success = False
+                                st.session_state.otp_verified_code = None
+                            else:
+                                st.error(msg)
+                        else:
+                            st.error("Verification mismatch. Code token is completely invalid.")
                         
         with tab3:
             st.write("#### Credential Reclamation Desk")
