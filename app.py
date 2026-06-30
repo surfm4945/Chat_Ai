@@ -6,7 +6,7 @@ import streamlit as st
 from database.connection import get_db_connection
 from chat.manager import send_message, get_chat_history, get_all_users, clear_chat_history
 from ai.gemini_client import correct_grammar, generate_smart_replies, translate_text, is_ai_configured
-from utils.emailer import send_verification_otp  # External import configuration
+from utils.emailer import send_verification_otp
 
 # Page Initialization
 st.set_page_config(page_title="Private AI Chat Network", page_icon="🔒", layout="wide")
@@ -23,7 +23,6 @@ def init_db():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # 1. Base table creation
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +32,6 @@ def init_db():
             );
             """)
             
-            # 2. PRAGMA Live Column Migration
             cursor.execute("PRAGMA table_info(users);")
             columns = [col[1] for col in cursor.fetchall()]
             
@@ -45,7 +43,6 @@ def init_db():
             if "recovery_phrase" not in columns:
                 cursor.execute("ALTER TABLE users ADD COLUMN recovery_phrase TEXT NOT NULL DEFAULT '';")
 
-            # 3. Create Messages table
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +58,6 @@ def init_db():
     except Exception as e:
         st.error(f"Critical initialization error: {e}")
 
-# Execute database checks and migrations immediately on boot
 init_db()
 
 # State Management Initialization
@@ -73,8 +69,12 @@ if "active_chat" not in st.session_state:
     st.session_state.active_chat = None
 if "uploader_version" not in st.session_state:
     st.session_state.uploader_version = 0
+if "show_uploader" not in st.session_state:
+    st.session_state.show_uploader = False
+if "msg_input_field" not in st.session_state:
+    st.session_state.msg_input_field = ""
 
-# Premium Master Visual Theme & Sticky Input Override Matrix
+# Premium Master Visual Theme & WhatsApp Sticky Input Alignment Matrix
 if st.session_state.theme_mode == "Light Mode":
     st.markdown("""
     <style>
@@ -92,8 +92,7 @@ if st.session_state.theme_mode == "Light Mode":
     .chat-bubble-target { background-color: #f1f5f9 !important; color: #0f172a !important; border-radius: 20px 20px 20px 4px !important; padding: 14px 18px; margin: 6px 0; max-width: 75%; float: left; clear: both; box-shadow: 0 2px 4px rgba(0,0,0,0.02); word-wrap: break-word; font-size: 0.95rem; }
     .chat-meta { color: #64748b; font-size: 0.78rem; margin-bottom: 3px; font-weight: 500; }
     
-    /* Dynamic Screen Safety Space Padding */
-    .main .block-container { padding-bottom: 260px !important; }
+    .main .block-container { padding-bottom: 200px !important; }
     
     /* WhatsApp Frozen Console Engine */
     div:has(> #whatsapp-input-anchor) {
@@ -102,13 +101,18 @@ if st.session_state.theme_mode == "Light Mode":
         left: 0 !important;
         right: 0 !important;
         background-color: #ffffff !important;
-        padding: 15px 30px 25px 30px !important;
+        padding: 15px 30px 20px 30px !important;
         z-index: 9999 !important;
         border-top: 1px solid #e2e8f0 !important;
         box-shadow: 0 -10px 25px rgba(15, 23, 42, 0.05) !important;
     }
     @media (min-width: 769px) {
         div:has(> #whatsapp-input-anchor) { left: 21rem !important; }
+    }
+    div[data-testid="stHorizontalBlock"] button {
+        height: 42px !important;
+        padding: 0px !important;
+        font-size: 1.25rem !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -129,8 +133,7 @@ else:
     .chat-bubble-target { background-color: #1f2937 !important; color: #f1f5f9 !important; border-radius: 20px 20px 20px 4px !important; padding: 14px 18px; margin: 6px 0; max-width: 75%; float: left; clear: both; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); word-wrap: break-word; font-size: 0.95rem; }
     .chat-meta { color: #9ca3af; font-size: 0.78rem; margin-bottom: 3px; font-weight: 500; }
     
-    /* Dynamic Screen Safety Space Padding */
-    .main .block-container { padding-bottom: 260px !important; }
+    .main .block-container { padding-bottom: 200px !important; }
     
     /* WhatsApp Frozen Console Engine */
     div:has(> #whatsapp-input-anchor) {
@@ -139,13 +142,18 @@ else:
         left: 0 !important;
         right: 0 !important;
         background-color: #111827 !important;
-        padding: 15px 30px 25px 30px !important;
+        padding: 15px 30px 20px 30px !important;
         z-index: 9999 !important;
         border-top: 1px solid #1f2937 !important;
         box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.4) !important;
     }
     @media (min-width: 769px) {
         div:has(> #whatsapp-input-anchor) { left: 21rem !important; }
+    }
+    div[data-testid="stHorizontalBlock"] button {
+        height: 42px !important;
+        padding: 0px !important;
+        font-size: 1.25rem !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -202,6 +210,9 @@ def local_reset_password(username, recovery_phrase, new_password):
 
 
 # --- STATE CALLBACK FUNCTIONS ---
+def callback_toggle_uploader():
+    st.session_state.show_uploader = not st.session_state.show_uploader
+
 def callback_send_message():
     text = st.session_state.msg_input_field.strip()
     uploader_key = f"media_uploader_{st.session_state.uploader_version}"
@@ -218,16 +229,37 @@ def callback_send_message():
         send_message(st.session_state.user["id"], st.session_state.active_chat["id"], text, saved_path, file_mime)
         st.session_state.msg_input_field = ""
         st.session_state.uploader_version += 1
+        st.session_state.show_uploader = False
 
 def callback_fix_grammar():
     text = st.session_state.msg_input_field.strip()
     if text:
-        st.session_state.msg_input_field = correct_grammar(text)
+        try:
+            corrected = correct_grammar(text)
+            if corrected:
+                st.session_state.msg_input_field = corrected
+                st.toast("✨ Grammar Cleaned Up!", icon="🪄")
+            else:
+                st.toast("⚠️ AI returned empty result. Check configuration.", icon="❌")
+        except Exception as e:
+            st.toast(f"❌ AI Error: {str(e)}")
+    else:
+        st.toast("💭 Type some text first to auto-fix!", icon="ℹ️")
 
 def callback_translate(target_lang):
     text = st.session_state.msg_input_field.strip()
     if text:
-        st.session_state.msg_input_field = translate_text(text, target_lang)
+        try:
+            translated = translate_text(text, target_lang)
+            if translated:
+                st.session_state.msg_input_field = translated
+                st.toast(f"🌐 Translated to {target_lang}!", icon="🌍")
+            else:
+                st.toast("⚠️ Translation returned empty. Check configuration.", icon="❌")
+        except Exception as e:
+            st.toast(f"❌ AI Error: {str(e)}")
+    else:
+        st.toast("💭 Type some text first to translate!", icon="ℹ️")
 
 def callback_wipe_history():
     if st.session_state.user and st.session_state.active_chat:
@@ -239,7 +271,7 @@ def callback_wipe_history():
 def render_live_chat_stream(current_user, target_chat):
     history = get_chat_history(current_user["id"], target_chat["id"])
     
-    chat_container = st.container(height=480, border=True)
+    chat_container = st.container(height=500, border=True)
     with chat_container:
         if not history:
             st.caption("Encrypted baseline linked. Transmission thread is blank.")
@@ -270,25 +302,26 @@ def render_live_chat_stream(current_user, target_chat):
         last_incoming_msg = history[-1]["content"]
         if is_ai_configured():
             st.write("💡 *Gemini AI Contextual Suggestions:*")
-            raw_replies = generate_smart_replies(last_incoming_msg)
-            options = [opt.strip() for opt in raw_replies.split("|") if opt.strip()]
-            cols = st.columns(len(options) if options else 1)
-            for idx, opt in enumerate(options):
-                if idx < len(cols):
-                    if cols[idx].button(opt, key=f"suggest_{idx}", use_container_width=True):
-                        send_message(current_user["id"], target_chat["id"], opt)
-                        st.rerun()
+            try:
+                raw_replies = generate_smart_replies(last_incoming_msg)
+                options = [opt.strip() for opt in raw_replies.split("|") if opt.strip()]
+                cols = st.columns(len(options) if options else 1)
+                for idx, opt in enumerate(options):
+                    if idx < len(cols):
+                        if cols[idx].button(opt, key=f"suggest_{idx}", use_container_width=True):
+                            send_message(current_user["id"], target_chat["id"], opt)
+                            st.rerun()
+            except:
+                pass
 
 
 # --- MID-CENTERED DYNAMIC AUTHENTICATION ENGINE ---
 if st.session_state.user is None:
     st.write("## ") 
-    
     _, layout_mid_canvas, _ = st.columns([1.5, 2, 1.5])
     
     with layout_mid_canvas:
         st.markdown('<div class="auth-container-card">', unsafe_allow_html=True)
-        
         st.markdown("<h2 style='text-align: center; margin-bottom: 0;'>🏪 The Mart Network</h2>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 25px;'>Secure AI-Powered Communication Matrix</p>", unsafe_allow_html=True)
         
@@ -299,7 +332,6 @@ if st.session_state.user is None:
         if "otp_sent_success" not in st.session_state:
             st.session_state.otp_sent_success = False
 
-        # --- VIEW 1: SIGN IN SCREEN ---
         if st.session_state.auth_page == "Sign In":
             st.write("#### 🔑 Secure Workspace Login")
             login_user = st.text_input("Username", key="login_user_input", placeholder="Enter your identity handle...").strip()
@@ -326,7 +358,6 @@ if st.session_state.user is None:
                     st.session_state.auth_page = "Forgot Password"
                     st.rerun()
 
-        # --- VIEW 2: CREATE ACCOUNT WITH AUTOMATIC REDIRECT ROUTING ---
         elif st.session_state.auth_page == "Create Account":
             st.write("#### 📝 Register Identity Node")
             reg_user = st.text_input("Choose Unique Username", key="reg_user_input", placeholder="e.g., sami11").strip()
@@ -381,7 +412,6 @@ if st.session_state.user is None:
                         else:
                             st.error("Verification mismatch. Code token is completely invalid.")
 
-        # --- VIEW 3: CREDENTIAL RECOVERY DESK ---
         elif st.session_state.auth_page == "Forgot Password":
             st.write("#### 🔄 Credential Reclamation Desk")
             forgot_user = st.text_input("Target Account Username", key="forgot_user_input").strip()
@@ -448,32 +478,42 @@ else:
             st.title(f"Channel: {target_chat['username']}")
         with col_wipe:
             st.write("") 
-            st.button("🗑️ Forget History", type="secondary", use_container_width=True, help="Permanently destroy entire logs of this channel", on_click=callback_wipe_history)
+            st.button("🗑️", type="secondary", use_container_width=True, help="Permanently destroy entire logs of this channel", on_click=callback_wipe_history)
         
-        # Render scrollable history stream
         render_live_chat_stream(current_user, target_chat)
 
         # --- WHATSAPP STYLE STICKY FOOTER TOOLBAR ---
         with st.container():
-            # Core identification CSS anchor tag
             st.markdown('<span id="whatsapp-input-anchor"></span>', unsafe_allow_html=True)
             
-            # Row 1: Message Input + Send Command Icon Button
-            col_msg_field, col_action_send = st.columns([5, 1])
-            with col_msg_field:
-                raw_input = st.text_input("Type message...", key="msg_input_field", placeholder="Type a message here...", label_visibility="collapsed")
-            with col_action_send:
-                st.button("🚀 Send", use_container_width=True, type="primary", on_click=callback_send_message)
+            # Contextual Dropdown / Upload Tray
+            if st.session_state.show_uploader:
+                current_uploader_key = f"media_uploader_{st.session_state.uploader_version}"
+                st.file_uploader("Attach media payload", type=["png", "jpg", "jpeg", "mp4", "mov", "pdf", "txt", "docx", "zip"], key=current_uploader_key, label_visibility="collapsed")
             
-            # Row 2: Media File Input Attachment Lane
-            current_uploader_key = f"media_uploader_{st.session_state.uploader_version}"
-            st.file_uploader("Attach media payload", type=["png", "jpg", "jpeg", "mp4", "mov", "pdf", "txt", "docx", "zip"], key=current_uploader_key, label_visibility="collapsed")
+            # High Accuracy Layout Columns
+            col_attach, col_fix, col_input, col_lang, col_trans, col_send = st.columns([0.4, 0.4, 4.0, 1.2, 0.4, 0.5])
             
-            # Row 3: Utility Control Action Bar (Grammar Correction & Real-time Translation)
-            col_ai_fix, col_lang_menu, col_run_trans = st.columns([2, 2, 2])
-            with col_ai_fix:
-                st.button("✨ Auto-Fix Grammar", use_container_width=True, on_click=callback_fix_grammar)
-            with col_lang_menu:
+            with col_attach:
+                if st.button("📎", use_container_width=True, help="Attach File / Media"):
+                    callback_toggle_uploader()
+                    st.rerun()
+                
+            with col_fix:
+                if st.button("✨", use_container_width=True, help="Auto-Fix Grammar"):
+                    callback_fix_grammar()
+                    st.rerun()
+                
+            with col_input:
+                st.text_input("Type message...", key="msg_input_field", placeholder="Type a message here...", label_visibility="collapsed")
+                
+            with col_lang:
                 selected_language = st.selectbox("Language Selector", ["Urdu", "English", "Saraiki", "Punjabi", "Pashto", "Sindhi", "Arabic", "Spanish", "Turkish", "French"], label_visibility="collapsed", key="target_language_dropdown")
-            with col_run_trans:
-                st.button("🌐 Translate Text", use_container_width=True, on_click=callback_translate, args=(selected_language,))
+                
+            with col_trans:
+                if st.button("🌐", use_container_width=True, help="Translate Text"):
+                    callback_translate(selected_language)
+                    st.rerun()
+                
+            with col_send:
+                st.button("🚀", use_container_width=True, type="primary", on_click=callback_send_message, help="Send Message")
