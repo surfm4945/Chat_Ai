@@ -232,6 +232,7 @@ def callback_send_message():
         st.session_state.show_uploader = False
 
 def callback_fix_grammar():
+    # Sync straight from text input state key
     text = st.session_state.msg_input_field.strip()
     if text:
         try:
@@ -240,11 +241,12 @@ def callback_fix_grammar():
                 st.session_state.msg_input_field = corrected
                 st.toast("✨ Grammar Cleaned Up!", icon="🪄")
             else:
-                st.toast("⚠️ AI returned empty result. Check configuration.", icon="❌")
-        except Exception as e:
-            st.toast(f"❌ AI Error: {str(e)}")
+                st.toast("⚠️ AI returned blank text.", icon="❌")
+        except Exception:
+            # Fallback handling to protect UI thread if API breaks
+            st.toast("⚠️ AI processing error. Check your API connectivity.", icon="❌")
     else:
-        st.toast("💭 Type some text first to auto-fix!", icon="ℹ️")
+        st.toast("💭 Type text into the field first!", icon="ℹ️")
 
 def callback_translate(target_lang):
     text = st.session_state.msg_input_field.strip()
@@ -255,11 +257,11 @@ def callback_translate(target_lang):
                 st.session_state.msg_input_field = translated
                 st.toast(f"🌐 Translated to {target_lang}!", icon="🌍")
             else:
-                st.toast("⚠️ Translation returned empty. Check configuration.", icon="❌")
-        except Exception as e:
-            st.toast(f"❌ AI Error: {str(e)}")
+                st.toast("⚠️ AI returned blank translation.", icon="❌")
+        except Exception:
+            st.toast("⚠️ AI processing error. Check your API connectivity.", icon="❌")
     else:
-        st.toast("💭 Type some text first to translate!", icon="ℹ️")
+        st.toast("💭 Type text into the field first!", icon="ℹ️")
 
 def callback_wipe_history():
     if st.session_state.user and st.session_state.active_chat:
@@ -500,6 +502,7 @@ else:
                     st.rerun()
                 
             with col_fix:
+                # Triggers accurate grammar correction callback directly
                 if st.button("✨", use_container_width=True, help="Auto-Fix Grammar"):
                     callback_fix_grammar()
                     st.rerun()
