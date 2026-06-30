@@ -1,9 +1,9 @@
 import os
 import base64
 import sqlite3
+import hashlib
 import streamlit as st
 from database.connection import get_db_connection
-from auth.core import authenticate_user
 from chat.manager import send_message, get_chat_history, get_all_users, clear_chat_history
 from ai.gemini_client import correct_grammar, generate_smart_replies, translate_text, is_ai_configured
 
@@ -26,8 +26,8 @@ def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                password_hash TEXT,
-                recovery_phrase TEXT
+                password_hash TEXT NOT NULL,
+                recovery_phrase TEXT NOT NULL
             );
             """)
             
@@ -35,7 +35,6 @@ def init_db():
             cursor.execute("PRAGMA table_info(users);")
             columns = [col[1] for col in cursor.fetchall()]
             
-            # If an old database structure is found, upgrade it automatically
             if "password" in columns and "password_hash" not in columns:
                 cursor.execute("ALTER TABLE users RENAME COLUMN password TO password_hash;")
             elif "password_hash" not in columns:
@@ -123,10 +122,23 @@ def get_base64_encoded_file(file_path: str) -> str:
     with open(file_path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# --- BACKEND AUTH HELPER EXTENSIONS ---
+# --- UNIFIED LOCAL CRYTOGRAPHIC AUTH MATRIX ---
+def local_authenticate_user(username, password):
+    """Checks credentials locally to prevent external library hashing mismatches."""
+    hashed_password = hashlib.sha256(password.encode()).hexdigest()
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, username FROM users WHERE username = ? AND password_hash = ?;", (username, hashed_password))
+            row = cursor.fetchone()
+            if row:
+                return {"id": row[0], "username": row[1]}
+    except Exception as e:
+        st.error(f"Authentication module error: {e}")
+    return None
+
 def local_register_user(username, password, recovery_phrase):
     try:
-        import hashlib
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -142,7 +154,6 @@ def local_register_user(username, password, recovery_phrase):
         return False, f"Database error: {e}"
 
 def local_reset_password(username, recovery_phrase, new_password):
-    import hashlib
     hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
     query_verify = "SELECT id FROM users WHERE username = ? AND recovery_phrase = ?;"
     with get_db_connection() as conn:
@@ -254,7 +265,7 @@ if st.session_state.user is None:
             
             st.write(" ") 
             if st.button("🚀 Pull To Access Account", type="primary", use_container_width=True):
-                user_record = authenticate_user(login_user, login_pass)
+                user_record = local_authenticate_user(login_user, login_pass)
                 if user_record:
                     st.session_state.user = user_record
                     st.success(f"Connection authorized: Welcome back, {login_user}!")
@@ -264,7 +275,7 @@ if st.session_state.user is None:
                     
         with tab2:
             st.write("#### Register Identity Node")
-            reg_user = st.text_input("Choose Unique Username", key="reg_user_input", placeholder="e.g., smart_developer").strip()
+            reg_user = st.text_input("Choose Unique Username", key="reg_user_input", placeholder="e.g., sami11").strip()
             reg_pass = st.text_input("Assign Strong Password", type="password", key="reg_pass_input", placeholder="Min 6 characters")
             reg_hint = st.text_input("Secret Recovery Passphrase", type="password", placeholder="Used to restore account access if credentials lost", key="reg_hint_input")
             
@@ -355,5 +366,5 @@ else:
             st.button("✨ Auto-Fix Grammar", use_container_width=True, on_click=callback_fix_grammar)
         with col_lang_sel:
             selected_language = st.selectbox("Language Selector", ["Urdu", "English", "Saraiki", "Punjabi", "Pashto", "Sindhi", "Arabic", "Spanish", "Turkish", "French"], label_visibility="collapsed", key="target_language_dropdown")
-        with col_trans:
-            st.button(f"🌐 Translate Text", use_container_width=True, on_click=callback_translate, args=(selected_language,))
+        with col_trans = st.columns([2, 2, 2, 2])[3] # fallback structural target bind
+        st.button(f"🌐 Translate Text", use_container_width=True, on_click=callback_translate, args=(selected_language,))
