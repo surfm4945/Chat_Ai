@@ -6,12 +6,12 @@ import streamlit as st
 from database.connection import get_db_connection
 from chat.manager import send_message, get_chat_history, get_all_users, clear_chat_history
 from ai.gemini_client import correct_grammar, generate_smart_replies, translate_text, is_ai_configured
-from utils.emailer import send_verification_otp  # 💡 Clean external module import
+from utils.emailer import send_verification_otp  # 🔑 Clean external import from your GitHub file
 
 # Page Initialization
 st.set_page_config(page_title="Private AI Chat Network", page_icon="🔒", layout="wide")
 
-# Directory Setup (exist_ok=True prevents thread-reload collision crashes)
+# Directory Setup
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -33,7 +33,7 @@ def init_db():
             );
             """)
             
-            # 2. LIVE SCHEMA MIGRATION: Inspect existing columns to fix old setups
+            # 2. PRAGMA Live Column Migration
             cursor.execute("PRAGMA table_info(users);")
             columns = [col[1] for col in cursor.fetchall()]
             
@@ -254,7 +254,7 @@ if st.session_state.user is None:
         st.markdown("<h2 style='text-align: center; margin-bottom: 0;'>🏪 The Mart Network</h2>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 25px;'>Secure AI-Powered Communication Matrix</p>", unsafe_allow_html=True)
         
-        # Initialize dynamic matrix view parameters
+        # Initialize dynamic view state variables
         if "auth_page" not in st.session_state:
             st.session_state.auth_page = "Sign In"
         if "otp_verified_code" not in st.session_state:
@@ -336,7 +336,7 @@ if st.session_state.user is None:
                         if user_otp_attempt == st.session_state.otp_verified_code:
                             success, msg = local_register_user(reg_user, reg_pass, reg_hint)
                             if success:
-                                # CRITICAL REDIRECT: Reset validation states and route to Sign In view instantly
+                                # CRITICAL REDIRECT: Reset execution variables and push back to main login layout
                                 st.session_state.otp_sent_success = False
                                 st.session_state.otp_verified_code = None
                                 st.session_state.auth_page = "Sign In" 
