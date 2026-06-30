@@ -47,9 +47,12 @@ def decrypt_payload(cipher_text, key_salt):
 
 # --- AUTO-DATABASE INITIALIZATION & MIGRATION ENGINE ---
 def init_db():
+    """Ensures core database schema and columns match backend auth requirements."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
+            
+            # 1. Ensure Users Table
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,13 +62,7 @@ def init_db():
             );
             """)
             
-            cursor.execute("PRAGMA table_info(users);")
-            columns = [col[1] for col in cursor.fetchall()]
-            if "password_hash" not in columns:
-                cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';")
-            if "recovery_phrase" not in columns:
-                cursor.execute("ALTER TABLE users ADD COLUMN recovery_phrase TEXT NOT NULL DEFAULT '';")
-
+            # 2. Ensure Messages Table
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,11 +71,19 @@ def init_db():
                 content TEXT,
                 file_path TEXT,
                 file_type TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                is_encrypted INTEGER DEFAULT 1,
-                expiry_time DATETIME DEFAULT NULL
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             );
             """)
+            
+            # 3. SCHEMA MIGRATION: Check and add missing columns dynamically
+            cursor.execute("PRAGMA table_info(messages);")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if "is_encrypted" not in columns:
+                cursor.execute("ALTER TABLE messages ADD COLUMN is_encrypted INTEGER DEFAULT 1;")
+            if "expiry_time" not in columns:
+                cursor.execute("ALTER TABLE messages ADD COLUMN expiry_time DATETIME DEFAULT NULL;")
+                
             conn.commit()
     except Exception as e:
         st.error(f"Critical initialization error: {e}")
