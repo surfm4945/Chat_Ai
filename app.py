@@ -122,7 +122,7 @@ def get_base64_encoded_file(file_path: str) -> str:
     with open(file_path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# --- UNIFIED LOCAL CRYTOGRAPHIC AUTH MATRIX ---
+# --- UNIFIED LOCAL CRYPTOGRAPHIC AUTH MATRIX ---
 def local_authenticate_user(username, password):
     """Checks credentials locally to prevent external library hashing mismatches."""
     hashed_password = hashlib.sha256(password.encode()).hexdigest()
@@ -366,5 +366,5 @@ else:
             st.button("✨ Auto-Fix Grammar", use_container_width=True, on_click=callback_fix_grammar)
         with col_lang_sel:
             selected_language = st.selectbox("Language Selector", ["Urdu", "English", "Saraiki", "Punjabi", "Pashto", "Sindhi", "Arabic", "Spanish", "Turkish", "French"], label_visibility="collapsed", key="target_language_dropdown")
-        with col_trans = st.columns([2, 2, 2, 2])[3] # fallback structural target bind
-        st.button(f"🌐 Translate Text", use_container_width=True, on_click=callback_translate, args=(selected_language,))
+        with col_trans:
+            st.button(f"🌐 Translate Text", use_container_width=True, on_click=callback_translate, args=(selected_language,))
