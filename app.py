@@ -6,6 +6,7 @@ import streamlit as st
 from database.connection import get_db_connection
 from chat.manager import send_message, get_chat_history, get_all_users, clear_chat_history
 from ai.gemini_client import correct_grammar, generate_smart_replies, translate_text, is_ai_configured
+from utils.emailer import send_verification_otp  # 💡 Clean external module import
 
 # Page Initialization
 st.set_page_config(page_title="Private AI Chat Network", page_icon="🔒", layout="wide")
@@ -13,6 +14,7 @@ st.set_page_config(page_title="Private AI Chat Network", page_icon="🔒", layou
 # Directory Setup (exist_ok=True prevents thread-reload collision crashes)
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 
 # --- AUTO-DATABASE INITIALIZATION & MIGRATION ENGINE ---
 def init_db():
@@ -78,8 +80,6 @@ if st.session_state.theme_mode == "Light Mode":
     <style>
     .stApp { background-color: #f8fafc; color: #0f172a; }
     div[data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #e2e8f0; }
-    
-    /* Centered Compact Login Card Layout */
     .auth-container-card {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -88,8 +88,6 @@ if st.session_state.theme_mode == "Light Mode":
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
         margin-top: 40px;
     }
-    
-    /* User-friendly Chat Bubbles */
     .chat-bubble-user { background-color: #0284c7 !important; color: white !important; border-radius: 20px 20px 4px 20px !important; padding: 14px 18px; margin: 6px 0; max-width: 75%; float: right; clear: both; box-shadow: 0 2px 4px rgba(0,0,0,0.04); word-wrap: break-word; font-size: 0.95rem; }
     .chat-bubble-target { background-color: #f1f5f9 !important; color: #0f172a !important; border-radius: 20px 20px 20px 4px !important; padding: 14px 18px; margin: 6px 0; max-width: 75%; float: left; clear: both; box-shadow: 0 2px 4px rgba(0,0,0,0.02); word-wrap: break-word; font-size: 0.95rem; }
     .chat-meta { color: #64748b; font-size: 0.78rem; margin-bottom: 3px; font-weight: 500; }
@@ -100,8 +98,6 @@ else:
     <style>
     .stApp { background-color: #0b0f19; color: #f1f5f9; }
     div[data-testid="stSidebar"] { background-color: #111827 !important; border-right: 1px solid #1f2937; }
-    
-    /* Centered Compact Login Card Layout */
     .auth-container-card {
         background-color: #111827;
         border: 1px solid #1f2937;
@@ -110,8 +106,6 @@ else:
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         margin-top: 40px;
     }
-    
-    /* User-friendly Chat Bubbles */
     .chat-bubble-user { background-color: #38bdf8 !important; color: #0b0f19 !important; border-radius: 20px 20px 4px 20px !important; padding: 14px 18px; margin: 6px 0; max-width: 75%; float: right; clear: both; box-shadow: 0 4px 12px rgba(56, 189, 248, 0.15); word-wrap: break-word; font-weight: 500; font-size: 0.95rem; }
     .chat-bubble-target { background-color: #1f2937 !important; color: #f1f5f9 !important; border-radius: 20px 20px 20px 4px !important; padding: 14px 18px; margin: 6px 0; max-width: 75%; float: left; clear: both; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); word-wrap: break-word; font-size: 0.95rem; }
     .chat-meta { color: #9ca3af; font-size: 0.78rem; margin-bottom: 3px; font-weight: 500; }
@@ -124,9 +118,9 @@ def get_base64_encoded_file(file_path: str) -> str:
     with open(file_path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
+
 # --- UNIFIED LOCAL CRYPTOGRAPHIC AUTH MATRIX ---
 def local_authenticate_user(username, password):
-    """Checks credentials locally to prevent external library hashing mismatches."""
     hashed_password = hashlib.sha256(password.encode()).hexdigest()
     try:
         with get_db_connection() as conn:
@@ -168,11 +162,10 @@ def local_reset_password(username, recovery_phrase, new_password):
             return True
         return False
 
+
 # --- STATE CALLBACK FUNCTIONS ---
 def callback_send_message():
     text = st.session_state.msg_input_field.strip()
-    
-    # Target file uploader content using the unique dynamic state key identifier
     uploader_key = f"media_uploader_{st.session_state.uploader_version}"
     uploaded_file = st.session_state.get(uploader_key)
     saved_path, file_mime = None, None
@@ -186,8 +179,6 @@ def callback_send_message():
     if (text or saved_path) and st.session_state.user and st.session_state.active_chat:
         send_message(st.session_state.user["id"], st.session_state.active_chat["id"], text, saved_path, file_mime)
         st.session_state.msg_input_field = ""
-        
-        # Safely wipe file target selection by mutating the key suffix
         st.session_state.uploader_version += 1
 
 def callback_fix_grammar():
@@ -251,7 +242,7 @@ def render_live_chat_stream(current_user, target_chat):
                         st.rerun()
 
 
-# --- MID-CENTERED SINGLE AUTHENTICATION CARD ---
+# --- MID-CENTERED DYNAMIC AUTHENTICATION ENGINE ---
 if st.session_state.user is None:
     st.write("## ") 
     
@@ -261,12 +252,19 @@ if st.session_state.user is None:
         st.markdown('<div class="auth-container-card">', unsafe_allow_html=True)
         
         st.markdown("<h2 style='text-align: center; margin-bottom: 0;'>🏪 The Mart Network</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 30px;'>Secure AI-Powered Communication Matrix</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 25px;'>Secure AI-Powered Communication Matrix</p>", unsafe_allow_html=True)
         
-        tab1, tab2, tab3 = st.tabs(["🔑 Sign In", "📝 Create Account", "🔄 Forgot Password"])
-        
-        with tab1:
-            st.write("#### Secure Workspace Login")
+        # Initialize dynamic matrix view parameters
+        if "auth_page" not in st.session_state:
+            st.session_state.auth_page = "Sign In"
+        if "otp_verified_code" not in st.session_state:
+            st.session_state.otp_verified_code = None
+        if "otp_sent_success" not in st.session_state:
+            st.session_state.otp_sent_success = False
+
+        # --- VIEW 1: SIGN IN SCREEN ---
+        if st.session_state.auth_page == "Sign In":
+            st.write("#### 🔑 Secure Workspace Login")
             login_user = st.text_input("Username", key="login_user_input", placeholder="Enter your identity handle...").strip()
             login_pass = st.text_input("Password", type="password", key="login_pass_input", placeholder="••••••••")
             
@@ -279,34 +277,36 @@ if st.session_state.user is None:
                     st.rerun()
                 else:
                     st.error("Access denied. Invalid cryptographic parameters.")
-                    
-        with tab2:
-            st.write("#### Register Identity Node")
             
-            # Initialize unique state parameters for email tracking if not present
-            if "otp_verified_code" not in st.session_state:
-                st.session_state.otp_verified_code = None
-            if "otp_sent_success" not in st.session_state:
-                st.session_state.otp_sent_success = False
+            st.write("---")
+            col_to_reg, col_to_forgot = st.columns([1, 1])
+            with col_to_reg:
+                if st.button("📝 Create Account", use_container_width=True):
+                    st.session_state.auth_page = "Create Account"
+                    st.rerun()
+            with col_to_forgot:
+                if st.button("🔄 Forgot Password", use_container_width=True):
+                    st.session_state.auth_page = "Forgot Password"
+                    st.rerun()
 
+        # --- VIEW 2: CREATE ACCOUNT WITH AUTOMATIC REDIRECT ROUTING ---
+        elif st.session_state.auth_page == "Create Account":
+            st.write("#### 📝 Register Identity Node")
             reg_user = st.text_input("Choose Unique Username", key="reg_user_input", placeholder="e.g., sami11").strip()
             reg_pass = st.text_input("Assign Strong Password", type="password", key="reg_pass_input", placeholder="Min 6 characters")
             reg_email = st.text_input("Gmail Address for Verification", placeholder="username@gmail.com", key="reg_email_input").strip()
             reg_hint = st.text_input("Secret Recovery Passphrase", type="password", placeholder="Used to restore account access if credentials lost", key="reg_hint_input")
             
-            # Step 1: Send OTP code to target email
+            # Sub-Step A: Dispatch OTP to user inbox
             if not st.session_state.otp_sent_success:
-                if st.button("📧 Send Verification Code", use_container_width=True):
+                if st.button("📧 Send Verification Code", use_container_width=True, type="primary"):
                     if len(reg_user) < 3 or len(reg_pass) < 6 or not reg_email or not reg_hint:
-                        st.warning("Ensure all fields meet configurations: User >=3, Pass >=6, and Email/Phrase filled.")
+                        st.warning("Ensure requirements met: User >=3, Pass >=6, Email & Recovery phrase filled.")
                     elif "@gmail.com" not in reg_email.lower():
                         st.error("Please supply a valid Gmail routing address.")
                     else:
                         with st.spinner("Dispatching secure credential tokens..."):
-                            # Call email sender function
-                            from utils.emailer import send_verification_otp
                             success, result = send_verification_otp(reg_email)
-                            
                             if success:
                                 st.session_state.otp_verified_code = result
                                 st.session_state.otp_sent_success = True
@@ -314,8 +314,12 @@ if st.session_state.user is None:
                                 st.rerun()
                             else:
                                 st.error(f"Email delivery subsystem failed: {result}")
+                
+                if st.button("⬅️ Back to Login", use_container_width=True):
+                    st.session_state.auth_page = "Sign In"
+                    st.rerun()
             
-            # Step 2: Code input display pops up only after email successfully fires
+            # Sub-Step B: Enter OTP and process Auto-Redirect
             else:
                 st.info(f"Verification code active. Check your email inbox: {reg_email}")
                 user_otp_attempt = st.text_input("Enter 6-Digit OTP Code Verification", max_chars=6, placeholder="######", key="user_otp_input_field").strip()
@@ -330,20 +334,22 @@ if st.session_state.user is None:
                 with col_confirm:
                     if st.button("✨ Verify & Create Profile", type="primary", use_container_width=True):
                         if user_otp_attempt == st.session_state.otp_verified_code:
-                            # Proceed with the original baseline database insertion logic
                             success, msg = local_register_user(reg_user, reg_pass, reg_hint)
                             if success:
-                                st.success("Identity verified successfully! Account network configured. Proceed to Sign In.")
-                                # Flush temp parameters out
+                                # CRITICAL REDIRECT: Reset validation states and route to Sign In view instantly
                                 st.session_state.otp_sent_success = False
                                 st.session_state.otp_verified_code = None
+                                st.session_state.auth_page = "Sign In" 
+                                st.toast("Account verified successfully! Please sign in.")
+                                st.rerun()
                             else:
                                 st.error(msg)
                         else:
                             st.error("Verification mismatch. Code token is completely invalid.")
-                        
-        with tab3:
-            st.write("#### Credential Reclamation Desk")
+
+        # --- VIEW 3: CREDENTIAL RECOVERY DESK ---
+        elif st.session_state.auth_page == "Forgot Password":
+            st.write("#### 🔄 Credential Reclamation Desk")
             forgot_user = st.text_input("Target Account Username", key="forgot_user_input").strip()
             forgot_hint = st.text_input("Your Secret Recovery Passphrase", type="password", key="forgot_hint_input")
             forgot_new_pass = st.text_input("Assign New Password", type="password", key="forgot_new_pass_input", placeholder="Min 6 characters")
@@ -351,11 +357,17 @@ if st.session_state.user is None:
             if st.button("🔄 Execute Password Override", type="primary", use_container_width=True):
                 if forgot_user and forgot_hint and len(forgot_new_pass) >= 6:
                     if local_reset_password(forgot_user, forgot_hint, forgot_new_pass):
-                        st.success("Identity matching successful! Password updated. Proceed to Sign In.")
+                        st.toast("Password updated successfully!")
+                        st.session_state.auth_page = "Sign In"
+                        st.rerun()
                     else:
                         st.error("Identity matching failed. Verification phrase is completely invalid.")
                 else:
                     st.warning("Please correctly fill out all configuration blocks.")
+                    
+            if st.button("⬅️ Back to Login", use_container_width=True):
+                st.session_state.auth_page = "Sign In"
+                st.rerun()
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -404,14 +416,12 @@ else:
             st.write("") 
             st.button("🗑️ Forget History", type="secondary", use_container_width=True, help="Permanently destroy entire logs of this channel", on_click=callback_wipe_history)
         
-        # --- EXECUTE LIVE STREAM FRAGMENT (1-SEC INTERVAL POLLING) ---
         render_live_chat_stream(current_user, target_chat)
 
         st.write("---")
 
         raw_input = st.text_input("Type message...", key="msg_input_field", placeholder="Type your message here...")
         
-        # Attach the dynamic versioned key string directly into the layout block
         current_uploader_key = f"media_uploader_{st.session_state.uploader_version}"
         st.file_uploader("Attach media payload", type=["png", "jpg", "jpeg", "mp4", "mov", "pdf", "txt", "docx", "zip"], key=current_uploader_key, label_visibility="collapsed")
         
