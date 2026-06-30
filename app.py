@@ -69,6 +69,8 @@ if "user" not in st.session_state:
     st.session_state.user = None
 if "active_chat" not in st.session_state:
     st.session_state.active_chat = None
+if "uploader_version" not in st.session_state:
+    st.session_state.uploader_version = 0
 
 # Premium Master Visual Theme Injection Engine
 if st.session_state.theme_mode == "Light Mode":
@@ -169,7 +171,10 @@ def local_reset_password(username, recovery_phrase, new_password):
 # --- STATE CALLBACK FUNCTIONS ---
 def callback_send_message():
     text = st.session_state.msg_input_field.strip()
-    uploaded_file = st.session_state.media_uploader_field
+    
+    # Target file uploader content using the unique dynamic state key identifier
+    uploader_key = f"media_uploader_{st.session_state.uploader_version}"
+    uploaded_file = st.session_state.get(uploader_key)
     saved_path, file_mime = None, None
     
     if uploaded_file is not None:
@@ -181,7 +186,9 @@ def callback_send_message():
     if (text or saved_path) and st.session_state.user and st.session_state.active_chat:
         send_message(st.session_state.user["id"], st.session_state.active_chat["id"], text, saved_path, file_mime)
         st.session_state.msg_input_field = ""
-        st.session_state.media_uploader_field = None
+        
+        # Safely wipe file target selection by mutating the key suffix
+        st.session_state.uploader_version += 1
 
 def callback_fix_grammar():
     text = st.session_state.msg_input_field.strip()
@@ -357,7 +364,10 @@ else:
         st.write("---")
 
         raw_input = st.text_input("Type message...", key="msg_input_field", placeholder="Type your message here...")
-        st.file_uploader("Attach media payload", type=["png", "jpg", "jpeg", "mp4", "mov", "pdf", "txt", "docx", "zip"], key="media_uploader_field", label_visibility="collapsed")
+        
+        # Attach the dynamic versioned key string directly into the layout block
+        current_uploader_key = f"media_uploader_{st.session_state.uploader_version}"
+        st.file_uploader("Attach media payload", type=["png", "jpg", "jpeg", "mp4", "mov", "pdf", "txt", "docx", "zip"], key=current_uploader_key, label_visibility="collapsed")
         
         col_send, col_fix, col_lang_sel, col_trans = st.columns([2, 2, 2, 2])
         with col_send:
