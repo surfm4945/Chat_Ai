@@ -14,22 +14,37 @@ st.set_page_config(page_title="Private AI Chat Network", page_icon="🔒", layou
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# --- AUTO-DATABASE INITIALIZATION ENGINE ---
+# --- AUTO-DATABASE INITIALIZATION & MIGRATION ENGINE ---
 def init_db():
-    """Ensures the core database schema exists seamlessly on fresh cloud instances."""
+    """Ensures core database schema and columns match backend auth requirements perfectly."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            # Auto-build Users table if missing (Using password_hash to match backend auth)
+            
+            # 1. Base table creation
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                recovery_phrase TEXT NOT NULL
+                password_hash TEXT,
+                recovery_phrase TEXT
             );
             """)
-            # Auto-build Messages table if missing
+            
+            # 2. LIVE SCHEMA MIGRATION: Inspect existing columns to fix old setups
+            cursor.execute("PRAGMA table_info(users);")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            # If an old database structure is found, upgrade it automatically
+            if "password" in columns and "password_hash" not in columns:
+                cursor.execute("ALTER TABLE users RENAME COLUMN password TO password_hash;")
+            elif "password_hash" not in columns:
+                cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';")
+                
+            if "recovery_phrase" not in columns:
+                cursor.execute("ALTER TABLE users ADD COLUMN recovery_phrase TEXT NOT NULL DEFAULT '';")
+
+            # 3. Create Messages table
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,7 +60,7 @@ def init_db():
     except Exception as e:
         st.error(f"Critical initialization error: {e}")
 
-# Execute database checks immediately on boot before auth hooks fire
+# Execute database checks and migrations immediately on boot
 init_db()
 
 # State Management Initialization
